@@ -30,6 +30,7 @@ from utils.tools import (
     get_version_info,
     get_urls_len,
     merge_objects,
+    get_logger,
     get_public_url,
     parse_times
 )
@@ -85,6 +86,7 @@ class UpdateSource:
                         task_func(channel_names, callback=self.update_progress)
                     )
                 self.tasks.append(task)
+                print(f"🚀 Start to get {setting} data...")
                 setattr(self, result_attr, await task)
 
     def pbar_update(self, name: str = "", item_name: str = ""):
@@ -193,12 +195,15 @@ class UpdateSource:
         except asyncio.exceptions.CancelledError:
             print(t("msg.update_cancelled"))
 
-    async def start(self, callback=None):
+    async def start(self, callback=None, run_ui=None):
         def default_callback(self, *args, **kwargs):
             pass
 
         self.update_progress = callback or default_callback
-        self.run_ui = True if callback else False
+        if run_ui is None:
+            self.run_ui = True if callback else False
+        else:
+            self.run_ui = run_ui
         if self.run_ui:
             self.update_progress(t("msg.check_ipv6_support"), 0)
         self.ipv6_support = config.ipv6_support or check_ipv6_support()
@@ -265,4 +270,8 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     update_source = UpdateSource()
-    loop.run_until_complete(update_source.start())
+    import logging
+    logger = get_logger(os.path.join(constants.output_dir, "tmp/log.txt"), level=logging.DEBUG, init=True)
+    def my_callback(title, progress, finished=False, url=None):
+        logger.debug(f"{title}: {progress}% finished {finished} url {url}")
+    loop.run_until_complete(update_source.start(callback=my_callback, run_ui=False))
