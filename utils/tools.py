@@ -247,16 +247,32 @@ def is_ipv6(url):
     Check if the url is ipv6
     """
     try:
-        host = urllib.parse.urlparse(url).hostname
+        purl = urllib.parse.urlparse(url)
+        host = purl.hostname
+        port = purl.port
+        scheme = purl.scheme
+        if port is None:
+            try:
+                port = socket.getservbyname(scheme)
+            except:
+                return False
+
+        sockarr = socket.getaddrinfo(host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM|socket.SOCK_DGRAM)
+        for family, typ, proto, _, sockaddr in sockarr:
+            if family == socket.AF_INET6:
+                with socket.socket(family, typ, proto) as sock:
+                    try:
+                        sock.settimeout(config.request_timeout)
+                        sock.connect(sockaddr)
+                        return True
+                    except Exception as e:
+                        print(f"\nIPv6 testing: {socket.SocketKind(typ)} {sockaddr} {e}")
+                        continue
+
+
         ipaddress.IPv6Address(host)
         return True
-        # if host:
-        #     addr_info = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        #     for info in addr_info:
-        #         if info[0] == socket.AF_INET6:
-        #             return True
-        # return False
-    except:
+    except Exception:
         return False
 
 
