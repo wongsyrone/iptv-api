@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import os
 import pickle
 from time import time
 
@@ -31,7 +32,8 @@ from utils.tools import (
     check_ipv6_support,
     resource_path,
     get_urls_from_file,
-    get_version_info
+    get_version_info,
+    get_logger
 )
 from utils.types import CategoryChannelData
 
@@ -85,6 +87,7 @@ class UpdateSource:
                         task_func(channel_names, callback=self.update_progress)
                     )
                 self.tasks.append(task)
+                print(f"🚀 Start to get {setting} data...")
                 setattr(self, result_attr, await task)
 
     def pbar_update(self, name: str = ""):
@@ -197,12 +200,15 @@ class UpdateSource:
         except asyncio.exceptions.CancelledError:
             print("Update cancelled!")
 
-    async def start(self, callback=None):
+    async def start(self, callback=None, run_ui=None):
         def default_callback(self, *args, **kwargs):
             pass
 
         self.update_progress = callback or default_callback
-        self.run_ui = True if callback else False
+        if run_ui is None:
+            self.run_ui = True if callback else False
+        else:
+            self.run_ui = run_ui
         await self.main()
 
     def stop(self):
@@ -219,4 +225,8 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     update_source = UpdateSource()
-    loop.run_until_complete(update_source.start())
+    import logging
+    logger = get_logger(os.path.join(constants.output_path, "tmp/log.txt"), level=logging.DEBUG, init=True)
+    def my_callback(title, progress, finished=False, url=None):
+        logger.debug(f"{title}: {progress}% finished {finished} url {url}")
+    loop.run_until_complete(update_source.start(callback=my_callback, run_ui=False))
