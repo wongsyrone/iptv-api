@@ -12,7 +12,7 @@ from multidict import CIMultiDictProxy
 
 import utils.constants as constants
 from utils.config import config
-from utils.tools import is_ipv6, remove_cache_info, get_resolution_value
+from utils.tools import remove_cache_info, get_resolution_value
 
 http.cookies._is_legal_key = lambda _: True
 
@@ -33,18 +33,21 @@ async def get_speed_with_download(url: str, session: ClientSession = None, timeo
         created_session = False
     try:
         async with session.get(url, timeout=timeout) as response:
-            if response.status != 200:
-                raise Exception("Invalid response")
-            info['delay'] = int(round((time() - start_time) * 1000))
-            async for chunk in response.content.iter_any():
-                if chunk:
-                    total_size += len(chunk)
-    except:
-        pass
+            if response.status == 200:
+                info['delay'] = int(round((time() - start_time) * 1000))
+                content_len = response.headers.get('Content-Length')
+                if content_len:
+                    total_size = int(content_len)
+                else:
+                    async for chunk in response.content.iter_any():
+                        if chunk:
+                            total_size += len(chunk)
+                if total_size > 0:
+                    total_time += time() - start_time
+                    info['speed'] = ((total_size / total_time) if total_time > 0 else 0) / 1024 / 1024
+    except Exception as e:
+        print(e)
     finally:
-        if total_size > 0:
-            total_time += time() - start_time
-            info['speed'] = ((total_size / total_time) if total_time > 0 else 0) / 1024 / 1024
         if created_session:
             await session.close()
         return info
@@ -178,7 +181,7 @@ async def ffmpeg_url(url, timeout=config.sort_timeout):
     """
     Get url info by ffmpeg
     """
-    args = ["ffmpeg", "-t", str(timeout), "-stats", "-i", url, "-f", "null", "-"]
+    args = ["ffmpeg", "-t", str(timeout), "-stats", "-i", f'"{url}"', "-f", "null", "-"]
     proc = None
     res = None
     try:
@@ -282,7 +285,6 @@ async def get_speed(url, ipv6_proxy=None, filter_resolution=config.open_filter_r
     data = {'speed': None, 'delay': None, 'resolution': None}
     try:
         cache_key = None
-        url_is_ipv6 = is_ipv6(url)
         if "$" in url:
             url, _, cache_info = url.partition("$")
             matcher = re.search(r"cache:(.*)", cache_info)
@@ -294,11 +296,8 @@ async def get_speed(url, ipv6_proxy=None, filter_resolution=config.open_filter_r
                 if cache_item['speed'] > 0 and cache_item['delay'] != -1 and get_resolution_value(
                         cache_item['resolution']) > min_resolution:
                     return cache_item
-        if ipv6_proxy and url_is_ipv6:
-            data['speed'] = float("inf")
-            data['delay'] = 0
-            data['resolution'] = "1920x1080"
-        elif re.match(constants.rtmp_url_pattern, url) is not None:
+
+        if constants.rtmp_url_pattern.match(url) is not None:
             start_time = time()
             data['resolution'] = await get_resolution_ffprobe(url, timeout)
             data['delay'] = int(round((time() - start_time) * 1000))
