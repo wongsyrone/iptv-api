@@ -130,6 +130,7 @@ def get_soup(source):
     soup = BeautifulSoup(source, "html.parser")
     return soup
 
+resolution_pattern = re.compile(r"(\d+)[xX*](\d+)")
 
 def get_resolution_value(resolution_str):
     """
@@ -137,8 +138,7 @@ def get_resolution_value(resolution_str):
     """
     try:
         if resolution_str:
-            pattern = r"(\d+)[xX*](\d+)"
-            match = re.search(pattern, resolution_str)
+            match = resolution_pattern.search(resolution_str)
             if match:
                 width, height = map(int, match.groups())
                 return width * height
@@ -442,16 +442,13 @@ def process_nested_dict(data, seen, flag=None, force_str=None):
             data[key] = remove_duplicates_from_tuple_list(value, seen, flag, force_str)
 
 
-url_host_compile = re.compile(
-    constants.url_host_pattern
-)
 
 
 def get_url_host(url):
     """
     Get the url host
     """
-    matcher = url_host_compile.search(url)
+    matcher = constants.url_host_pattern.search(url)
     if matcher:
         return matcher.group()
     return None
@@ -474,12 +471,13 @@ def format_url_with_cache(url, cache=None):
     cache = cache or get_url_host(url) or ""
     return add_url_info(url, f"cache:{cache}") if cache else url
 
+remove_cache_info_pattern = re.compile(r"[.*]?\$?-?cache:.*")
 
 def remove_cache_info(string):
     """
     Remove the cache info from the string
     """
-    return re.sub(r"[.*]?\$?-?cache:.*", "", string)
+    return remove_cache_info_pattern.sub("", string)
 
 
 def resource_path(relative_path, persistent=False):
@@ -548,14 +546,13 @@ def get_urls_from_file(path: str) -> list:
     """
     real_path = get_real_path(resource_path(path))
     urls = []
-    url_pattern = constants.url_pattern
     if os.path.exists(real_path):
         with open(real_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line.startswith("#"):
                     continue
-                match = re.search(url_pattern, line)
+                match = constants.url_pattern.search(line)
                 if match:
                     urls.append(match.group().strip())
     return urls
