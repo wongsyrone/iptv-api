@@ -16,6 +16,9 @@ from utils.tools import remove_cache_info, get_resolution_value
 
 http.cookies._is_legal_key = lambda _: True
 
+def_speed = 0.0
+def_delay = float("inf")
+def_resolution = "0x0"
 
 async def get_speed_with_download(url: str, session: ClientSession = None, timeout: int = config.sort_timeout) -> dict[
     str, float | None]:
@@ -25,7 +28,7 @@ async def get_speed_with_download(url: str, session: ClientSession = None, timeo
     start_time = time()
     total_size = 0
     total_time = 0
-    info = {'speed': None, 'delay': None}
+    info = {'speed': def_speed, 'delay': def_delay}
     if session is None:
         session = ClientSession(connector=TCPConnector(ssl=False), trust_env=True)
         created_session = True
@@ -65,8 +68,9 @@ async def get_m3u8_headers(url: str, session: ClientSession = None, timeout: int
         created_session = False
     headers = {}
     try:
-        async with session.head(url, timeout=timeout) as response:
+        async with session.head(url, allow_redirects=True, timeout=timeout) as response:
             headers = response.headers
+            print(headers)
     except:
         pass
     finally:
@@ -90,16 +94,12 @@ async def get_speed_m3u8(url: str, filter_resolution: bool = config.open_filter_
     """
     Get the speed of the m3u8 url with a total timeout
     """
-    info = {'speed': None, 'delay': None, 'resolution': None}
-    location = None
+    info = {'speed': def_speed, 'delay': def_delay, 'resolution': def_resolution}
     try:
         url = quote(url, safe=':/?$&=@[]%').partition('$')[0]
         async with ClientSession(connector=TCPConnector(ssl=False), trust_env=True) as session:
             headers = await get_m3u8_headers(url, session)
-            location = headers.get('Location')
-            if location:
-                info.update(await get_speed_m3u8(location, filter_resolution, timeout))
-            elif check_m3u8_valid(headers):
+            if check_m3u8_valid(headers):
                 m3u8_obj = m3u8.load(url, timeout=2)
                 playlists = m3u8_obj.data.get('playlists')
                 segments = m3u8_obj.segments
@@ -122,16 +122,17 @@ async def get_speed_m3u8(url: str, filter_resolution: bool = config.open_filter_
                     if time() - start_time > timeout:
                         break
                     download_info = await get_speed_with_download(ts_url, session, timeout)
-                    speed_list.append(download_info['speed'])
-                    if info['delay'] is None and download_info['delay'] is not None:
+                    if download_info['speed'] != def_speed:
+                        speed_list.append(download_info['speed'])
+                    if info['delay'] == def_delay and download_info['delay'] != def_delay:
                         info['delay'] = download_info['delay']
-                info['speed'] = (sum(speed_list) / len(speed_list)) if speed_list else 0
+                info['speed'] = (sum(speed_list) / len(speed_list)) if speed_list else def_speed
             elif headers.get('Content-Length'):
                 info.update(await get_speed_with_download(url, session, timeout))
     except:
         pass
     finally:
-        if filter_resolution and not location and info['delay'] is not None:
+        if filter_resolution and info['delay'] != def_delay:
             info['resolution'] = await get_resolution_ffprobe(url, timeout)
         return info
 
@@ -181,7 +182,7 @@ async def ffmpeg_url(url, timeout=config.sort_timeout):
     """
     Get url info by ffmpeg
     """
-    args = ["ffmpeg", "-t", str(timeout), "-stats", "-i", f'"{url}"', "-f", "null", "-"]
+    args = ["ffmpeg", "-t", str(timeout), "-stats", "-i", f"'{url}'", "-f", "null", "-"]
     proc = None
     res = None
     try:
@@ -212,7 +213,7 @@ async def get_resolution_ffprobe(url: str, timeout: int = config.sort_timeout) -
     """
     Get the resolution of the url by ffprobe
     """
-    resolution = None
+    resolution = def_resolution
     proc = None
     try:
         probe_args = [
@@ -242,7 +243,7 @@ def get_video_info(video_info):
     Get the video info
     """
     frame_size = -1
-    resolution = None
+    resolution = def_resolution
     if video_info is not None:
         info_data = video_info.replace(" ", "")
         matches = re.findall(r"frame=(\d+)", info_data)
@@ -282,7 +283,7 @@ async def get_speed(url, ipv6_proxy=None, filter_resolution=config.open_filter_r
     """
     Get the speed (response time and resolution) of the url
     """
-    data = {'speed': None, 'delay': None, 'resolution': None}
+    data = {'speed': def_speed, 'delay': def_delay, 'resolution': def_resolution}
     try:
         cache_key = None
         if "$" in url:
@@ -293,7 +294,7 @@ async def get_speed(url, ipv6_proxy=None, filter_resolution=config.open_filter_r
         if cache_key in cache:
             cache_list = cache[cache_key]
             for cache_item in cache_list:
-                if cache_item['speed'] > 0 and cache_item['delay'] != -1 and get_resolution_value(
+                if cache_item['speed'] > def_speed and cache_item['delay'] != def_delay and get_resolution_value(
                         cache_item['resolution']) > min_resolution:
                     return cache_item
 
@@ -301,7 +302,7 @@ async def get_speed(url, ipv6_proxy=None, filter_resolution=config.open_filter_r
             start_time = time()
             data['resolution'] = await get_resolution_ffprobe(url, timeout)
             data['delay'] = int(round((time() - start_time) * 1000))
-            data['speed'] = float("inf") if data['resolution'] is not None else 0
+            data['speed'] = def_speed if data['resolution'] == def_resolution else float("inf")
         else:
             data.update(await get_speed_m3u8(url, filter_resolution, timeout))
         if cache_key:
@@ -350,7 +351,7 @@ def sort_urls(name, data, supply=config.open_supply, filter_speed=config.open_fi
             cache_list = cache[cache_key]
             if cache_list:
                 avg_speed = sum(item['speed'] or 0 for item in cache_list) / len(cache_list)
-                avg_delay = max(int(sum(item['delay'] or -1 for item in cache_list) / len(cache_list)), -1)
+                avg_delay = max(float(sum(item['delay'] or -1 for item in cache_list) / len(cache_list)), -1)
                 resolution = max((item['resolution'] for item in cache_list), key=get_resolution_value) or resolution
                 try:
                     if logger:
