@@ -3,7 +3,7 @@ name: Build and Push Docker Images
 on:
   workflow_dispatch:
     branches:
-      - master
+      - mine
 
 jobs:
   build:
@@ -27,8 +27,8 @@ jobs:
         with:
           context: .
           push: true
-          tags: guovern/iptv-api:latest
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          tags: wongsyrone/iptv-api:full
+          platforms: linux/amd64
           build-args: |
             APP_WORKDIR=/iptv-api
             LITE=False
@@ -38,8 +38,8 @@ jobs:
         with:
           context: .
           push: true
-          tags: guovern/iptv-api:lite
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          tags: wongsyrone/iptv-api:lite
+          platforms: linux/amd64
           build-args: |
             APP_WORKDIR=/iptv-api-lite
             LITE=True
