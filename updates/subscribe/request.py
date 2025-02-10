@@ -60,19 +60,19 @@ async def get_channels_by_subscribe_urls(
             subscribe_url = subscribe_info
         channels = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         in_whitelist = whitelist and (subscribe_url in whitelist)
-        session = Session()
         try:
             response = None
             try:
+                def do_request(timeout):
+                    with Session() as session:
+                        return session.get(subscribe_url, timeout=timeout)
                 response = (
                     retry_func(
-                        lambda: session.get(
-                            subscribe_url, timeout=config.request_timeout
-                        ),
+                        lambda: do_request(config.request_timeout),
                         name=subscribe_url,
                     )
                     if retry
-                    else session.get(subscribe_url, timeout=config.request_timeout)
+                    else do_request(config.request_timeout)
                 )
             except exceptions.Timeout:
                 print(f"Timeout on subscribe: {subscribe_url}")
@@ -125,7 +125,6 @@ async def get_channels_by_subscribe_urls(
             if error_print:
                 print(f"Error on {subscribe_url}: {e}")
         finally:
-            session.close()
             pbar.update()
             remain = subscribe_urls_len - pbar.n
             if callback:
