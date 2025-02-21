@@ -35,18 +35,21 @@ async def get_speed_with_download(url: str, session: ClientSession = None, timeo
         created_session = False
     try:
         async with session.get(url, timeout=timeout) as response:
-            if response.status != 200:
-                raise Exception("Invalid response")
-            info['delay'] = int(round((time() - start_time) * 1000))
-            async for chunk in response.content.iter_any():
-                if chunk:
-                    total_size += len(chunk)
-    except:
-        pass
+            if response.status == 200:
+                info['delay'] = int(round((time() - start_time) * 1000))
+                content_len = response.headers.get('Content-Length')
+                if content_len:
+                    total_size = int(content_len)
+                else:
+                    async for chunk in response.content.iter_any():
+                        if chunk:
+                            total_size += len(chunk)
+                if total_size > 0:
+                    total_time += time() - start_time
+                    info['speed'] = ((total_size / total_time) if total_time > 0 else 0) / 1024 / 1024
+    except Exception as e:
+        print(e)
     finally:
-        if total_size > 0:
-            total_time += time() - start_time
-            info['speed'] = ((total_size / total_time) if total_time > 0 else 0) / 1024 / 1024
         if created_session:
             await session.close()
         return info
@@ -64,8 +67,9 @@ async def get_m3u8_headers(url: str, session: ClientSession = None, timeout: int
         created_session = False
     headers = {}
     try:
-        async with session.head(url, timeout=timeout) as response:
+        async with session.head(url, allow_redirects=True, timeout=timeout) as response:
             headers = response.headers
+            print(headers)
     except:
         pass
     finally:
@@ -90,15 +94,11 @@ async def get_speed_m3u8(url: str, resolution: str = None, filter_resolution: bo
     Get the speed of the m3u8 url with a total timeout
     """
     info = {'speed': None, 'delay': None, 'resolution': resolution}
-    location = None
     try:
         url = quote(url, safe=':/?$&=@[]%').partition('$')[0]
         async with ClientSession(connector=TCPConnector(ssl=False), trust_env=True) as session:
             headers = await get_m3u8_headers(url, session)
-            location = headers.get('Location')
-            if location:
-                info.update(await get_speed_m3u8(location, resolution, filter_resolution, timeout))
-            elif check_m3u8_valid(headers):
+            if check_m3u8_valid(headers):
                 m3u8_obj = m3u8.load(url, timeout=2)
                 playlists = m3u8_obj.data.get('playlists')
                 segments = m3u8_obj.segments
@@ -130,7 +130,7 @@ async def get_speed_m3u8(url: str, resolution: str = None, filter_resolution: bo
     except:
         pass
     finally:
-        if not resolution and filter_resolution and not location and info['delay'] is not None:
+        if not resolution and filter_resolution and info['delay'] is not None:
             info['resolution'] = await get_resolution_ffprobe(url, timeout)
         return info
 
@@ -295,11 +295,7 @@ async def get_speed(url, is_ipv6=False, ipv6_proxy=None, resolution=None,
                     data = cache_item
                     break
         else:
-            if is_ipv6 and ipv6_proxy:
-                data['speed'] = float("inf")
-                data['delay'] = 0
-                data['resolution'] = "1920x1080"
-            elif constants.rtmp_url_pattern.match(url) is not None:
+            if constants.rtmp_url_pattern.match(url) is not None:
                 start_time = time()
                 if not data['resolution'] and filter_resolution:
                     data['resolution'] = await get_resolution_ffprobe(url, timeout)

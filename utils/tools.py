@@ -247,12 +247,31 @@ def check_url_ipv6(url):
     Check if the url is ipv6
     """
     try:
-        host = urllib.parse.urlparse(url).hostname
-        if host:
-            addr_info = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-            for info in addr_info:
-                if info[0] == socket.AF_INET6:
+        purl = urllib.parse.urlparse(url)
+        host = purl.hostname
+        port = purl.port
+        scheme = purl.scheme
+        if port is None:
+            try:
+                port = socket.getservbyname(scheme)
+            except:
+                return False
+
+        sockarr = socket.getaddrinfo(host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)
+        for family, typ, proto, _, sockaddr in sockarr:
+            if family == socket.AF_INET6:
+                if config.open_keep_all:
+                    print(f"\nIPv6 testing: disable making real con due to open_keep_all")
                     return True
+                else:
+                    with socket.socket(family, typ, proto) as sock:
+                        try:
+                            sock.settimeout(4)
+                            sock.connect(sockaddr)
+                            return True
+                        except Exception as e:
+                            print(f"\nIPv6 testing: {socket.SocketKind(typ)} {sockaddr} {e}")
+                            continue
         return False
     except:
         return False
